@@ -65,11 +65,15 @@ jobs:
         run: |
           set -euo pipefail
           node -e "const s=require('@swc/core'); console.log(JSON.stringify({version:s.version,target:s.getBinaryMetadata().target})); s.transformSync('const answer: number = 42', {jsc:{parser:{syntax:'typescript'}}})" | tee ../results/native-swc.txt
+          results="$(realpath ../results)"
+          cd packages/g6
+          test -f __tests__/snapshots/bugs/plugin-minimap-combo-collapsed/default.svg
           set +e
-          node node_modules/jest/bin/jest.js --config packages/g6/jest.config.js --runInBand --runTestsByPath packages/g6/__tests__/bugs/plugin-minimap-combo-collapsed.spec.ts --json --outputFile=../results/jest.json --coverageDirectory=../results/coverage 2>&1 | tee ../results/jest.log
+          node ../../node_modules/jest/bin/jest.js --config jest.config.js --runInBand --runTestsByPath __tests__/bugs/plugin-minimap-combo-collapsed.spec.ts --json --outputFile="$results/jest.json" --coverageDirectory="$results/coverage" 2>&1 | tee "$results/jest.log"
           code=${PIPESTATUS[0]}
           set -e
-          printf '%s\n' "$code" > ../results/jest.exit
+          printf '%s\n' "$code" > "$results/jest.exit"
+          cd ../..
           git diff --exit-code -- packages/g6/src packages/g6/__tests__ packages/g6/jest.config.js tests/g6/plugins/plugins-minimap-mask.spec.ts
           exit "$code"
       - name: Preserve native outcomes without changing upstream PR
