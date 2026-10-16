@@ -1,0 +1,79 @@
+name: Validate existing G6 minimap native smoke
+
+on:
+  push:
+    branches:
+      - codex/validate-g6-minimap-native-20261016
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    if: >-
+      github.repository == 'dvd233/G6' &&
+      github.repository_id == '1376445477' &&
+      github.repository_owner_id == '111864431' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/validate-g6-minimap-native-20261016'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      HUSKY: '0'
+    steps:
+      - name: Checkout exact existing PR source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: dvd233/G6
+          ref: ee2eba8599e066213f17f75ced71819ee68f8ea4
+          path: source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use Node 20 as in original project CI
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20.20.2
+      - name: Verify source and record environment
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p ../results
+          test "$(git rev-parse HEAD)" = ee2eba8599e066213f17f75ced71819ee68f8ea4
+          test -z "$(git status --porcelain)"
+          git ls-tree HEAD packages/g6/src/plugins/minimap/index.ts tests/g6/plugins/plugins-minimap-mask.spec.ts packages/g6/jest.config.js > ../results/source-binding.txt
+          { node --version; npm --version; uname -a; } > ../results/runtime.txt
+          sha256sum pnpm-lock.yaml > ../results/lock-before.sha256
+      - name: Install Linux canvas build libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev pkg-config
+      - name: Install original workspace dependencies
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm exec --yes --package=pnpm@9.15.9 -- pnpm install --no-frozen-lockfile 2>&1 | tee ../results/install.log
+          sha256sum pnpm-lock.yaml > ../results/lock-after.sha256
+          git diff --stat > ../results/install-diff.txt
+          git diff --exit-code -- packages/g6/src packages/g6/__tests__ packages/g6/jest.config.js tests/g6/plugins/plugins-minimap-mask.spec.ts
+      - name: Run original Jest minimap smoke with native SWC
+        working-directory: source
+        run: |
+          set -euo pipefail
+          node -e "const s=require('@swc/core'); console.log(JSON.stringify({version:s.version,target:s.getBinaryMetadata().target})); s.transformSync('const answer: number = 42', {jsc:{parser:{syntax:'typescript'}}})" | tee ../results/native-swc.txt
+          set +e
+          node node_modules/jest/bin/jest.js --config packages/g6/jest.config.js --runInBand --runTestsByPath packages/g6/__tests__/bugs/plugin-minimap-combo-collapsed.spec.ts --json --outputFile=../results/jest.json --coverageDirectory=../results/coverage 2>&1 | tee ../results/jest.log
+          code=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$code" > ../results/jest.exit
+          git diff --exit-code -- packages/g6/src packages/g6/__tests__ packages/g6/jest.config.js tests/g6/plugins/plugins-minimap-mask.spec.ts
+          exit "$code"
+      - name: Preserve native outcomes without changing upstream PR
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: g6-minimap-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 7
+
