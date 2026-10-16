@@ -43,7 +43,11 @@ jobs:
           test -z "$(git status --porcelain)"
           git ls-tree HEAD packages/g6/src/plugins/minimap/index.ts tests/g6/plugins/plugins-minimap-mask.spec.ts packages/g6/jest.config.js > ../results/source-binding.txt
           { node --version; npm --version; uname -a; } > ../results/runtime.txt
-          sha256sum pnpm-lock.yaml > ../results/lock-before.sha256
+          if test -f pnpm-lock.yaml; then
+            sha256sum pnpm-lock.yaml > ../results/lock-before.sha256
+          else
+            printf '%s\n' 'No tracked pnpm-lock.yaml at this source commit; original CI resolves dependencies with --no-frozen-lockfile.' > ../results/lock-before.txt
+          fi
       - name: Install Linux canvas build libraries
         run: |
           sudo apt-get update
@@ -76,4 +80,3 @@ jobs:
           path: results/
           if-no-files-found: error
           retention-days: 7
-
